@@ -335,12 +335,14 @@ def adaptive_batch_insert_with_ewma(
     min_batch: int = 5000,
     max_batch: int = 150000,
     target_seconds: float = 3.0,
+    max_retries: int = 5,
 ):
     """
     Adaptive batch insert with EWMA tracking (based on Class1.cs lines 66-150)
 
     Args:
         starting_batch: Starting batch size. Prefix with '=' for fixed batch (e.g., '=5000')
+        max_retries: Maximum retries for same batch before trying row-by-row or failing
     """
     total_rows = len(df)
     sent = 0
@@ -357,9 +359,14 @@ def adaptive_batch_insert_with_ewma(
     ewma_alpha = 0.25  # smoothing for rows/sec
     ewma_rows_per_sec = 0.0
 
+    # Retry tracking to prevent infinite loops
+    consecutive_failures = 0
+    last_failed_position = -1
+
     log.info(
         f"Starting adaptive batch insert: total={total_rows}, starting_batch={batch}, "
-        f"fixed={fixed_batch}, min={min_batch}, max={max_batch}, target={target_seconds}s"
+        f"fixed={fixed_batch}, min={min_batch}, max={max_batch}, target={target_seconds}s, "
+        f"max_retries={max_retries}"
     )
 
     while sent < total_rows:
@@ -373,16 +380,79 @@ def adaptive_batch_insert_with_ewma(
             insert_json_batch_with_compression(
                 conn, table_name, batch_df, dtypes_cfg, col_info, USE_COMPRESSION
             )
+            # Success - reset failure counter
+            consecutive_failures = 0
+            last_failed_position = -1
         except Exception as e:
             # Error-aware backoff (like Class1.cs lines 102-120)
             elapsed = time.perf_counter() - start_time
             err_msg = str(e).lower()
+
+            # Track consecutive failures at same position
+            if sent == last_failed_position:
+                consecutive_failures += 1
+            else:
+                consecutive_failures = 1
+                last_failed_position = sent
+
             log.error(
-                f"Batch failed (rows={take}, {elapsed:.2f}s). Error: {e}"
+                f"Batch failed (rows={take}, position={sent}, attempt={consecutive_failures}/{max_retries}). "
+                f"Error: {e}"
             )
 
+            # Check if we've exceeded retry limit
+            if consecutive_failures >= max_retries:
+                if batch > 1:
+                    # Try single-row inserts as last resort
+                    log.warning(
+                        f"Max retries ({max_retries}) reached at position {sent}. "
+                        f"Attempting row-by-row insert for next {take} rows..."
+                    )
+                    try:
+                        # Try inserting row by row
+                        failed_rows = []
+                        for i in range(take):
+                            row_df = df.iloc[sent + i : sent + i + 1]
+                            try:
+                                insert_json_batch_with_compression(
+                                    conn, table_name, row_df, dtypes_cfg, col_info, USE_COMPRESSION
+                                )
+                            except Exception as row_error:
+                                failed_rows.append((sent + i, row_error))
+                                log.error(f"Failed to insert row {sent + i}: {row_error}")
+
+                        # If all rows failed, raise error
+                        if len(failed_rows) == take:
+                            raise Exception(
+                                f"All {take} rows failed at position {sent}. "
+                                f"First error: {failed_rows[0][1]}"
+                            )
+
+                        # Some rows succeeded - move forward
+                        sent += take
+                        consecutive_failures = 0
+                        last_failed_position = -1
+                        batch = min_batch  # Reset to min batch size
+                        log.info(
+                            f"Row-by-row insert completed. {len(failed_rows)} rows failed, "
+                            f"{take - len(failed_rows)} succeeded. Continuing..."
+                        )
+                        continue
+                    except Exception as fatal_error:
+                        raise Exception(
+                            f"Fatal error at position {sent} after {max_retries} retries and "
+                            f"row-by-row attempt. Error: {fatal_error}"
+                        ) from e
+                else:
+                    # Already at single row and still failing
+                    raise Exception(
+                        f"Unable to insert row at position {sent} after {max_retries} attempts. "
+                        f"Error: {e}"
+                    ) from e
+
+            # Reduce batch size for retry
+            old_batch = batch
             batch = max(int(batch * dec_factor), min_batch)
-            log.info(f"Reducing batch size to {batch} due to error")
 
             # More aggressive reduction for specific errors (Class1.cs lines 112-117)
             if any(
@@ -390,7 +460,12 @@ def adaptive_batch_insert_with_ewma(
                 for keyword in ["timeout", "request size", "payload too large"]
             ):
                 batch = max(int(batch * dec_factor), min_batch)
-                log.info(f"Further reducing batch size to {batch} (error-specific)")
+                log.info(f"Detected size-related error, reducing batch to {batch}")
+
+            if old_batch != batch:
+                log.info(f"Reducing batch size from {old_batch} to {batch} for retry")
+            else:
+                log.info(f"Retrying with same batch size ({batch})")
 
             # Do not advance 'sent'; retry this segment
             continue
