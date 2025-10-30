@@ -1,7 +1,7 @@
 # Bugs Fixed During Code Review
 
 ## Summary
-Fixed 6 critical bugs in the original implementation that would have caused crashes, data loss, and infinite loops.
+Fixed 7 critical bugs in the original implementation that would have caused crashes, data loss, and infinite loops.
 
 ---
 
@@ -207,16 +207,66 @@ If all fail → Raise exception ✅
 
 ---
 
+## Bug #7: Boolean Columns as INT ❌ INSERT FAILURE
+**Location:** Original `core.py` lines 112-115
+**Severity:** Critical - Insert failures for boolean columns
+
+### Problem
+```python
+# Boolean types (treat as integer)
+elif pd.api.types.is_bool_dtype(dtype):
+    info['type'] = 'INTEGER'  # ❌ Maps to INT in database
+    info['size'] = None
+```
+
+**Result:**
+```python
+DataFrame:
+  is_active = True  (bool) → INT column in database
+
+JSON representation:
+  {"is_active": true}  # JSON boolean
+
+SQL Server OPENJSON:
+  INSERT ... FROM OPENJSON(@json) WITH ([is_active] INT '$.is_active')
+  ❌ ERROR: Cannot convert JSON boolean to INT!
+```
+
+**Error message:**
+```
+Error converting data type nvarchar to int.
+JSON text is not properly formatted.
+```
+
+### Fix
+Changed boolean columns to be stored as NVARCHAR:
+```python
+# Boolean types (treat as string for text storage)
+elif pd.api.types.is_bool_dtype(dtype):
+    info['type'] = 'STRING'       # Maps to NVARCHAR
+    info['size'] = 10             # Enough for "True"/"False"
+```
+
+**After fix:**
+```python
+is_active → NVARCHAR(10) ✅
+JSON: {"is_active": true} → Stored as "true" in database ✅
+```
+
+---
+
 ## Commits
 
 1. **ba91d56** - feat: add EWMA adaptive batching and GZIP compression
 2. **806df32** - fix: properly infer and apply SQL types for all column types
 3. **35452aa** - fix: prevent infinite retry loop with max_retries limit and row-by-row fallback
+4. **b938da1** - fix: store boolean columns as NVARCHAR instead of INT
 
 ## Testing
 
 - `test_column_inference.py` - Verifies all column types inferred correctly
 - `test_retry_logic.py` - Documents retry behavior and infinite loop prevention
+- `test_boolean_columns.py` - Verifies boolean columns map to NVARCHAR(10)
 
 ## Impact
 
@@ -225,10 +275,12 @@ Without these fixes, the code would:
 - ❌ Fail to insert any data (parameterized queries + no commit)
 - ❌ Truncate numeric data (wrong column types)
 - ❌ Hang forever on persistent errors (infinite loop)
+- ❌ Fail on boolean columns (cannot cast JSON boolean to INT)
 
 With these fixes:
 - ✅ All functions implemented and working
 - ✅ Data correctly inserted with GZIP compression
 - ✅ Column types properly inferred from DataFrame
 - ✅ Graceful error handling with retry limits
+- ✅ Boolean columns stored as text (NVARCHAR)
 - ✅ Production-ready code!
