@@ -589,6 +589,9 @@ def run_pipeline(
     starting_batch_size: str = "10000",
 ):
     """Main pipeline to load data from config into SQL Server"""
+    # Start timing
+    pipeline_start = time.perf_counter()
+
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
@@ -723,6 +726,13 @@ def run_pipeline(
 
             log.info(f"[{name}] Completed insert.")
 
+    # Calculate total runtime
+    pipeline_end = time.perf_counter()
+    total_seconds = pipeline_end - pipeline_start
+    minutes = int(total_seconds // 60)
+    seconds = total_seconds % 60
+
     log.info("\n" + "=" * 60)
     log.info("Pipeline complete!")
+    log.info(f"Total runtime: {minutes}m {seconds:.2f}s ({total_seconds:.2f} seconds)")
     log.info("=" * 60)
