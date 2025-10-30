@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import toml
 import pandas as pd
 import polars as pl
+from tqdm import tqdm
 from sqlalchemy import create_engine, MetaData, Table, Column, text
 from sqlalchemy.types import Integer, Float, String, Date, DateTime, Numeric
 from sqlalchemy.engine import Connection
@@ -204,7 +205,7 @@ def create_table_if_not_exists(
         columns.append(Column(col, col_type, nullable=True))
     table = Table(table_name, metadata, *columns)
     metadata.create_all(bind=conn)
-    log.info(f"Ensured table '{table_name}' exists.")
+    log.debug(f"Ensured table '{table_name}' exists.")
 
 
 def df_to_json_array(df: pd.DataFrame) -> str:
@@ -363,10 +364,20 @@ def adaptive_batch_insert_with_ewma(
     consecutive_failures = 0
     last_failed_position = -1
 
-    log.info(
+    log.debug(
         f"Starting adaptive batch insert: total={total_rows}, starting_batch={batch}, "
         f"fixed={fixed_batch}, min={min_batch}, max={max_batch}, target={target_seconds}s, "
         f"max_retries={max_retries}"
+    )
+
+    # Create progress bar
+    pbar = tqdm(
+        total=total_rows,
+        desc="Inserting",
+        unit="rows",
+        unit_scale=True,
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+        dynamic_ncols=True,
     )
 
     while sent < total_rows:
@@ -395,18 +406,18 @@ def adaptive_batch_insert_with_ewma(
                 consecutive_failures = 1
                 last_failed_position = sent
 
-            log.error(
+            log.debug(
                 f"Batch failed (rows={take}, position={sent}, attempt={consecutive_failures}/{max_retries}). "
                 f"Error: {e}"
             )
+            pbar.write(f"⚠️  Batch failed (attempt {consecutive_failures}/{max_retries}): {str(e)[:80]}")
 
             # Check if we've exceeded retry limit
             if consecutive_failures >= max_retries:
                 if batch > 1:
                     # Try single-row inserts as last resort
-                    log.warning(
-                        f"Max retries ({max_retries}) reached at position {sent}. "
-                        f"Attempting row-by-row insert for next {take} rows..."
+                    pbar.write(
+                        f"⚠️  Max retries ({max_retries}) reached. Attempting row-by-row insert..."
                     )
                     try:
                         # Try inserting row by row
@@ -419,10 +430,11 @@ def adaptive_batch_insert_with_ewma(
                                 )
                             except Exception as row_error:
                                 failed_rows.append((sent + i, row_error))
-                                log.error(f"Failed to insert row {sent + i}: {row_error}")
+                                log.debug(f"Failed to insert row {sent + i}: {row_error}")
 
                         # If all rows failed, raise error
                         if len(failed_rows) == take:
+                            pbar.close()
                             raise Exception(
                                 f"All {take} rows failed at position {sent}. "
                                 f"First error: {failed_rows[0][1]}"
@@ -430,21 +442,23 @@ def adaptive_batch_insert_with_ewma(
 
                         # Some rows succeeded - move forward
                         sent += take
+                        pbar.update(take)
                         consecutive_failures = 0
                         last_failed_position = -1
                         batch = min_batch  # Reset to min batch size
-                        log.info(
-                            f"Row-by-row insert completed. {len(failed_rows)} rows failed, "
-                            f"{take - len(failed_rows)} succeeded. Continuing..."
+                        pbar.write(
+                            f"✓ Row-by-row: {take - len(failed_rows)} succeeded, {len(failed_rows)} failed"
                         )
                         continue
                     except Exception as fatal_error:
+                        pbar.close()
                         raise Exception(
                             f"Fatal error at position {sent} after {max_retries} retries and "
                             f"row-by-row attempt. Error: {fatal_error}"
                         ) from e
                 else:
                     # Already at single row and still failing
+                    pbar.close()
                     raise Exception(
                         f"Unable to insert row at position {sent} after {max_retries} attempts. "
                         f"Error: {e}"
@@ -460,12 +474,12 @@ def adaptive_batch_insert_with_ewma(
                 for keyword in ["timeout", "request size", "payload too large"]
             ):
                 batch = max(int(batch * dec_factor), min_batch)
-                log.info(f"Detected size-related error, reducing batch to {batch}")
+                log.debug(f"Detected size-related error, reducing batch to {batch}")
 
             if old_batch != batch:
-                log.info(f"Reducing batch size from {old_batch} to {batch} for retry")
+                pbar.write(f"↓ Reducing batch size: {old_batch} → {batch}")
             else:
-                log.info(f"Retrying with same batch size ({batch})")
+                log.debug(f"Retrying with same batch size ({batch})")
 
             # Do not advance 'sent'; retry this segment
             continue
@@ -484,7 +498,15 @@ def adaptive_batch_insert_with_ewma(
 
         # Success: commit progress (Class1.cs line 124)
         sent += take
-        log.info(
+
+        # Update progress bar with detailed metrics
+        pbar.update(take)
+        pbar.set_postfix_str(
+            f"batch={batch:,} | {rows_per_sec:.0f} rows/s | EWMA={ewma_rows_per_sec:.0f} rows/s",
+            refresh=True
+        )
+
+        log.debug(
             f"Inserted {sent}/{total_rows}. Batch={take}, {elapsed:.2f}s "
             f"({rows_per_sec:.0f} rows/s, EWMA={ewma_rows_per_sec:.0f} rows/s)"
         )
@@ -495,24 +517,24 @@ def adaptive_batch_insert_with_ewma(
                 # Fast → increase (Class1.cs lines 130-135)
                 new_batch = min(int(batch * inc_factor), max_batch)
                 if new_batch != batch:
-                    log.info(
-                        f"Increasing batch size from {batch} to {new_batch} (fast: {elapsed:.2f}s)"
-                    )
+                    pbar.write(f"↑ Increasing batch size: {batch:,} → {new_batch:,} (fast: {elapsed:.2f}s)")
                     batch = new_batch
             elif elapsed > slow_threshold:
                 # Slow → decrease (Class1.cs lines 136-141)
                 new_batch = max(int(batch * dec_factor), min_batch)
                 if new_batch != batch:
-                    log.info(
-                        f"Decreasing batch size from {batch} to {new_batch} (slow: {elapsed:.2f}s)"
-                    )
+                    pbar.write(f"↓ Decreasing batch size: {batch:,} → {new_batch:,} (slow: {elapsed:.2f}s)")
                     batch = new_batch
             else:
                 # Within target band: small additive increase (Class1.cs lines 144-149)
                 additive = max(batch // 20, 1000)  # +5% or 1000 min
                 new_batch = min(batch + additive, max_batch)
                 if new_batch != batch:
+                    log.debug(f"Small batch increase: {batch} → {new_batch}")
                     batch = new_batch
+
+    # Close progress bar
+    pbar.close()
 
 
 def load_csv_with_polars(
@@ -523,7 +545,7 @@ def load_csv_with_polars(
     table_name: str = "table",
 ) -> pd.DataFrame:
     """Load CSV using Polars (eager), return as Pandas DataFrame"""
-    log.info(f"[{table_name}] Loading CSV: {src_path}")
+    log.debug(f"[{table_name}] Loading CSV: {src_path}")
 
     # Use Polars eager API - we need all data anyway for type inference
     df = pl.read_csv(
@@ -547,7 +569,7 @@ def load_csv_with_polars(
     # Normalize column names
     pandas_df.columns = [normalize_header(col) for col in pandas_df.columns]
 
-    log.info(
+    log.debug(
         f"[{table_name}] Loaded {len(pandas_df)} rows, {len(pandas_df.columns)} columns from CSV"
     )
     return pandas_df
@@ -560,7 +582,7 @@ def load_excel_with_pandas(
     table_name: str = "table",
 ) -> pd.DataFrame:
     """Load Excel file using Pandas"""
-    log.info(f"[{table_name}] Loading Excel: {src_path}")
+    log.debug(f"[{table_name}] Loading Excel: {src_path}")
 
     # Load Excel file
     if sheet:
@@ -577,7 +599,7 @@ def load_excel_with_pandas(
     # Normalize column names
     df.columns = [normalize_header(col) for col in df.columns]
 
-    log.info(
+    log.debug(
         f"[{table_name}] Loaded {len(df)} rows, {len(df.columns)} columns from Excel"
     )
     return df
@@ -596,11 +618,11 @@ def run_pipeline(
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
 
-    log.info(f"Reading config: {config_path}")
+    log.debug(f"Reading config: {config_path}")
     config = toml.load(config_path)
 
     db_url = config["database"]["url"]
-    log.info(f"Creating engine for DB URL: {db_url}")
+    log.debug(f"Creating engine for DB URL: {db_url}")
 
     engine = create_engine(db_url, pool_pre_ping=True, fast_executemany=True)
 
@@ -617,7 +639,7 @@ def run_pipeline(
 
     # Use starting_batch_size from CLI or config
     default_batch = starting_batch_size or str(options.get("chunksize", 10000))
-    log.info(f"Global options: starting_batch={default_batch}")
+    log.debug(f"Global options: starting_batch={default_batch}")
 
     tables = config.get("tables", [])
     if not tables:
@@ -626,16 +648,16 @@ def run_pipeline(
 
     if only_tables:
         names = [t.get("name") for t in tables]
-        log.info(f"Filtering tables: only_tables={only_tables} from available={names}")
+        log.debug(f"Filtering tables: only_tables={only_tables} from available={names}")
         tables = [t for t in tables if t.get("name") in only_tables]
         if not tables:
             log.warning(f"No matching tables for filters: {only_tables}")
             return
 
     # First pass: create all tables
-    log.info("=" * 60)
-    log.info("PHASE 1: Creating tables")
-    log.info("=" * 60)
+    print("\n" + "=" * 60)
+    print("PHASE 1: Creating tables")
+    print("=" * 60)
 
     with engine.connect() as conn:
         for tbl in tables:
@@ -645,7 +667,7 @@ def run_pipeline(
             mappings = tbl.get("column_mappings", {}) or {}
             dtypes_cfg = tbl.get("dtypes", {}) or {}
 
-            log.info(f"\n[{name}] Loading data for schema inference...")
+            print(f"  ▸ {name}: Loading data for schema inference...")
 
             # Load data
             if src_type == "csv":
@@ -673,23 +695,24 @@ def run_pipeline(
 
             # Create table
             create_table_if_not_exists(conn, name, df, dtype_map)
+            print(f"    ✓ Created table '{name}' ({len(df):,} rows, {len(df.columns)} columns)")
 
         conn.commit()
 
     # Second pass: insert data with adaptive batching
-    log.info("\n" + "=" * 60)
-    log.info("PHASE 2: Inserting data with adaptive batching")
-    log.info("=" * 60)
+    print("\n" + "=" * 60)
+    print("PHASE 2: Inserting data with adaptive batching")
+    print("=" * 60 + "\n")
 
     with engine.connect() as conn:
-        for tbl in tables:
+        for idx, tbl in enumerate(tables, 1):
             name = tbl["name"]
             src_path = tbl["source_path"]
             src_type = tbl["source_type"].lower()
             mappings = tbl.get("column_mappings", {}) or {}
             dtypes_cfg = tbl.get("dtypes", {}) or {}
 
-            log.info(f"\n[{name}] Loading data for insert...")
+            print(f"Table {idx}/{len(tables)}: {name}")
 
             # Load data again (to avoid keeping in memory)
             if src_type == "csv":
@@ -711,7 +734,7 @@ def run_pipeline(
                 raise ValueError(f"Unsupported source_type: {src_type}")
 
             if len(df) == 0:
-                log.warning(f"[{name}] DataFrame has 0 rows after load. Skipping.")
+                print(f"  ⚠️  Skipping (0 rows)\n")
                 continue
 
             # Coerce dtypes and infer column info
@@ -719,12 +742,11 @@ def run_pipeline(
             col_info = infer_column_info(df)
 
             # Insert with adaptive batching
-            log.info(f"[{name}] Starting adaptive batch insert of {len(df)} rows...")
             adaptive_batch_insert_with_ewma(
                 conn, name, df, dtypes_cfg, col_info, starting_batch=default_batch
             )
 
-            log.info(f"[{name}] Completed insert.")
+            print(f"  ✓ Completed\n")
 
     # Calculate total runtime
     pipeline_end = time.perf_counter()
@@ -732,7 +754,7 @@ def run_pipeline(
     minutes = int(total_seconds // 60)
     seconds = total_seconds % 60
 
-    log.info("\n" + "=" * 60)
-    log.info("Pipeline complete!")
-    log.info(f"Total runtime: {minutes}m {seconds:.2f}s ({total_seconds:.2f} seconds)")
-    log.info("=" * 60)
+    print("=" * 60)
+    print("✓ Pipeline complete!")
+    print(f"  Total runtime: {minutes}m {seconds:.2f}s")
+    print("=" * 60)
