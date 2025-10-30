@@ -334,7 +334,7 @@ def adaptive_batch_insert_with_ewma(
     starting_batch: str = "10000",
     min_batch: int = 5000,
     max_batch: int = 150000,
-    target_seconds: float = 3.0,
+    target_seconds: float = 2.0,
     max_retries: int = 5,
 ):
     """
@@ -352,8 +352,8 @@ def adaptive_batch_insert_with_ewma(
     batch = int(starting_batch.lstrip("="))
 
     # Adaptive controls (from Class1.cs lines 76-81)
-    fast_threshold = 0.75 * target_seconds  # 2.25s
-    slow_threshold = 1.50 * target_seconds  # 4.5s
+    fast_threshold = 0.75 * target_seconds  # 1.5s
+    slow_threshold = 1.50 * target_seconds  # 3.0s
     inc_factor = 1.20
     dec_factor = 0.80
     ewma_alpha = 0.25  # smoothing for rows/sec
