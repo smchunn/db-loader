@@ -1,0 +1,71 @@
+
+[database]
+url = "mssql+pyodbc://usdf11v0803/WSA-0001?driver=ODBC+Driver+18+for+SQL+Server&authentication=Kerberos"
+
+[[tables]]
+name = "parts_master"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/Parts Master - 7.9 mil rows.csv"
+source_type = "csv"
+delimiter = ","
+column_mappings = {"Default Warehouse" = "default_warehouse", "Description" = "description", "Hazardous" = "hazardous", "Lead Time" = "lead_time", "MSDS" = "msds", "Part Number" = "part_number", "Product Class" = "product_class", "Rotable" = "rotable", "Serialized" = "serialized", "Shelf Life" = "shelf_life", "UOM" = "uom", "FACILITYCODE" = "facilitycode", "PARTMASTERKEY" = "partmasterkey"}
+dtypes = {}
+if_exists = "fail"
+
+[[tables]]
+name = "work_orders"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/Work_Orders 3.8 mil rows.csv"
+source_type = "csv"
+delimiter = ","
+column_mappings = {"FACILITYCODE" = "facilitycode", "WO Status" = "wo_status", "WO Date Closed" = "wo_date_closed", "Work Order" = "work_order", "WO Date Opened" = "wo_date_opened", "WO Date Posted" = "wo_date_posted", "Expected Finish" = "expected_finish", "Expected Start" = "expected_start", "WO Date Started" = "wo_date_started", "WO Date Ended" = "wo_date_ended", "Customer Account Code" = "customer_account_code", "Aircraft" = "aircraft", "Item Description" = "item_description", "Part Number" = "part_number", "Item Number" = "item_number", "Item Quantity" = "item_quantity", "Manufacturer" = "manufacturer", "Item Serial Number" = "item_serial_number", "Date Completed" = "date_completed", "Discrepancy" = "discrepancy", "Date Opened" = "date_opened", "Parts Cost" = "parts_cost", "Parts Revenue" = "parts_revenue", "Resolution" = "resolution", "Services Cost" = "services_cost", "Services Revenue" = "services_revenue", "Signed Off By" = "signed_off_by", "Sign Off Date" = "sign_off_date", "DEPARTMENTKEY" = "departmentkey", "SQUAWKKEY" = "squawkkey", "STEPKEY" = "stepkey", "SQUAWKSTEPKEY" = "squawkstepkey", "Serial Number" = "serial_number", "Status" = "status", "Squawk Number" = "squawk_number", "Step Number" = "step number", "SUBSTEPNUMBER" = "substepnumber", "SUB_SUBSTEPNUMBER" = "sub_substepnumber"}
+dtypes = {}
+if_exists = "fail"
+
+[[tables]]
+name = "part_po_detail"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/Part PO Detail 10.13.25.xlsx"
+source_type = "excel"
+sheet = "PO_Dataset"
+column_mappings = {"Warehouses[Warehouse]" = "warehouse", "PO_Line_Items[Tail Number]" = "tail_number", "PO_Line_Items[Association]" = "association", "PO_Line_Items[Purchase Type]" = "purchase_type", "PO_Line_Items[Part Number]" = "part_number", "PO_Line_Items[Description]" = "description", "PO_Line_Items[Vendor]" = "vendor", "PO_Line_Items[Date Ordered]" = "date_ordered", "PO_Line_Items[PO Line Number]" = "po_line_number", "PO_Line_Items[Requested By]" = "requested_by", "PO_Line_Items[Date Closed]" = "date_closed", "PO_Line_Items[Condition]" = "condition", "PO_Line_Items[Line Status]" = "line_status", "PO_Line_Items[GL Account]" = "gl_account", "PO_Line_Items[Payment Type]" = "payment_type", "PO_Line_Items[Ordered By]" = "ordered_by", "PO_Line_Items[Warehouse Location]" = "warehouse_location", "PO_Line_Items[Service Description]" = "service_description", "PO_Master[PO Comments]" = "po_comments", "PO_Line_Items[Aircraft]" = "aircraft", "PO_Line_Items[Date Promised]" = "date_promised", "PO_Line_Items[Date Required]" = "date_required", "PO_Line_Items[Item Description]" = "item_description", "PO_Line_Items[Work Instructions]" = "work_instructions", "PO_Line_Items[Date Received]" = "date_received", "[SumQty_Ordered]" = "sum_qty_ordered", "[SumQty_Received]" = "sum_qty_received", "[SumUnit_Cost]" = "sum_unit_cost", "[SumExtended_Cost]" = "sum_extended_cost"}
+dtypes = {}
+if_exists = "fail"
+
+[[tables]]
+name = "service_po_detail"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/Service PO Detail 10.13.25.xlsx"
+source_type = "excel"
+sheet = "Service_PO"
+column_mappings = {"Warehouses[Warehouse]" = "warehouse", "PO_Line_Items[Tail Number]" = "tail_number", "PO_Line_Items[Association]" = "association", "PO_Line_Items[Purchase Type]" = "purchase_type", "PO_Line_Items[Part Number]" = "part_number", "PO_Line_Items[Description]" = "description", "PO_Line_Items[Vendor]" = "vendor", "PO_Line_Items[Date Ordered]" = "date_ordered", "PO_Line_Items[PO Line Number]" = "po_line_number", "PO_Line_Items[Requested By]" = "requested_by", "PO_Line_Items[Date Closed]" = "date_closed", "PO_Line_Items[Condition]" = "condition", "PO_Line_Items[Line Status]" = "line_status", "PO_Line_Items[GL Account]" = "gl_account", "PO_Line_Items[Payment Type]" = "payment_type", "PO_Line_Items[Ordered By]" = "ordered_by", "PO_Line_Items[Warehouse Location]" = "warehouse_location", "PO_Line_Items[Service Description]" = "service_description", "PO_Master[PO Comments]" = "po_comments", "PO_Line_Items[Aircraft]" = "aircraft", "PO_Line_Items[Date Promised]" = "date_promised", "PO_Line_Items[Date Required]" = "date_required", "PO_Line_Items[Item Description]" = "item_description", "PO_Line_Items[Work Instructions]" = "work_instructions", "PO_Line_Items[Date Received]" = "date_received", "[SumQty_Ordered]" = "sum_qty_ordered", "[SumQty_Received]" = "sum_qty_received", "[SumUnit_Cost]" = "sum_unit_cost", "[SumExtended_Cost]" = "sum_extended_cost"}
+dtypes = {}
+if_exists = "fail"
+
+[[tables]]
+name = "workorderpartsevw"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WORKORDERPARTSEVW - 5 mil rows.csv"
+source_type = "csv"
+delimiter = ","
+column_mappings = {"ASSIGNCOSTTOCUSTOMER" = "assigncosttocustomer", "ASSIGNREVENUETOCUSTOMER" = "assignrevenuetocustomer", "DELETED" = "deleted", "DESCRIPTION" = "description", "ESTIMATEDCOST" = "estimatedcost", "ESTIMATEDPRICE" = "estimatedprice", "MANUFACTURER" = "manufacturer", "PARTCONDITION" = "partcondition", "PARTNUMBER" = "partnumber", "QTYFROMINVENTORY" = "qtyfrominventory", "QTYLOCATED" = "qtylocated", "QTYONORDER" = "qtyonorder", "QTYONREQUEST" = "qtyonrequest", "QTYORDERED" = "qtyordered", "QTYRECEIVED" = "qtyreceived", "QUANTITY" = "quantity", "SELLPRICE" = "sellprice", "UNITOFMEASURE" = "unitofmeasure", "FACILITYCODE" = "facilitycode", "PARTKEY" = "partkey", "STEPKEY" = "stepkey", "SQUAWKKEY" = "squawkkey"}
+dtypes = {}
+if_exists = "fail"
+
+[[tables]]
+name = "workorderpartsdetailevw"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WORKORDERPARTSDETAILEVW - 13m rows.csv"
+source_type = "csv"
+delimiter = ","
+column_mappings = {"CONDITION" = "condition", "COST" = "cost", "DELETED" = "deleted", "DELIVEREDDATE" = "delivereddate", "LOTNUMBER" = "lotnumber", "PONUMBER" = "ponumber", "QTYRECEIVED" = "qtyreceived", "QUANTITY" = "quantity", "FACILITYCODE" = "facilitycode", "PARTKEY" = "partkey", "DETAILKEY" = "detailkey"}
+dtypes = {}
+if_exists = "fail"
+
+[[tables]]
+name = "workorderreturnedpartsdtlevw"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WORKORDERRETURNEDPARTSDTLEVW - 145k rows.csv"
+source_type = "csv"
+delimiter = ","
+column_mappings = {"COST" = "cost", "INVENTORYCOREVALUE" = "inventorycorevalue", "QUANTITY" = "quantity", "QUANTITYRECEIVED" = "quantityreceived", "FACILITYCODE" = "facilitycode", "WORKORDERPARTDETAILKEY" = "workorderpartdetailkey"}
+dtypes = {}
+if_exists = "fail"
+
+[options]
+chunksize = 1000
+loglevel = "INFO"
+

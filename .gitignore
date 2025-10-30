@@ -1,0 +1,110 @@
+# --- Python bytecode & cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual environments ---
+venv/
+env/
+.venv/
+.env/
+pipenv/
+Pipfile.lock
+poetry.lock
+
+# --- Build & packaging ---
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+.wheelhouse/
+MANIFEST
+
+# --- Testing & coverage ---
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+pytestcache/
+.pytest_cache/
+
+# --- Type checking & linting ---
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+ruff_cache/
+ruff.toml
+.pylintrc
+
+# --- PyInstaller ---
+*.spec
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Jupyter / data science ---
+.ipynb_checkpoints/
+profile_default/
+# DVC / datasets (optional)
+.dvc/
+data/
+*.parquet
+*.feather
+
+# --- Django / Flask / other frameworks ---
+# Django
+*.log
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# Flask / general instance config
+instance/
+*.db
+
+# --- Environment & secrets (use with care) ---
+# Comment out if you track env files in CI/CD
+.env
+.env.*
+*.env
+
+# --- IDE & editor settings ---
+# VS Code
+.vscode/
+# PyCharm / IntelliJ
+.idea/
+*.iml
+# General editor artifacts
+*.swp
+*~
+*.swo
+.project
+.settings/
+.metadata/
+
+# --- OS-specific junk ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Containers / deployment ---
+# Docker
+docker-compose.override.yml
+# Kubernetes
+*.kube/*
+

@@ -1,0 +1,41 @@
+# Global database settings
+[database]
+# SQLAlchemy connection URL (choose one)
+# Examples:
+# url = "sqlite:///./data.db"
+# url = "postgresql+psycopg2://user:pass@localhost:5432/mydb"
+# url = "mysql+pymysql://user:pass@localhost:3306/mydb"
+# url = "mssql+pyodbc://server/db?driver=ODBC+Driver+18+for+SQL+Server"
+# url = "mssql+pyodbc://server/db?driver=ODBC+Driver+18+for+SQL+Server&authentication=Kerberos"
+url = "sqlite:///./data.db"
+
+# Tables section: define one [[tables]] per source
+[[tables]]
+name = "customers"
+source_path = "data/customers.csv"
+source_type = "csv"          # csv | excel
+delimiter = ","              # (optional for CSV)
+null_values = ["", "NULL"]   # (optional)
+# Map source column names -> target column names
+column_mappings = { "CustomerID" = "customer_id", "Name" = "name", "SignupDate" = "signup_date", "Spend" = "spend" }
+# Optional type coercions (applied before load)
+dtypes = { "customer_id" = "INT", "name" = "TEXT", "signup_date" = "DATE", "spend" = "FLOAT" }
+if_exists = "append"         # append | replace | fail
+pre_sql = ""                 # optional SQL to run before load
+post_sql = ""                # optional SQL to run after load
+
+[[tables]]
+name = "orders"
+source_path = "data/orders.xlsx"
+source_type = "excel"
+sheet = "Sheet1"             # required for excel if multiple sheets
+column_mappings = { "OrderID" = "order_id", "CustomerID" = "customer_id", "CreatedAt" = "created_at", "Total" = "total" }
+dtypes = { "order_id" = "INT", "customer_id" = "INT", "created_at" = "DATETIME", "total" = "FLOAT" }
+if_exists = "append"
+pre_sql = "DELETE FROM staging_orders WHERE 1=1"   # example
+post_sql = ""
+
+# Optional: default batch size for writing (rows per chunk)
+[options]
+chunksize = 5000
+loglevel = "DEBUG"           # DEBUG | INFO | WARN | ERROR
