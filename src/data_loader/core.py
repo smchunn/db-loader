@@ -109,10 +109,10 @@ def infer_column_info(df: pd.DataFrame) -> Dict[str, Dict]:
             info['type'] = 'DATETIME'
             info['size'] = None
 
-        # Boolean types (treat as integer)
+        # Boolean types (treat as string for text storage)
         elif pd.api.types.is_bool_dtype(dtype):
-            info['type'] = 'INTEGER'
-            info['size'] = None
+            info['type'] = 'STRING'
+            info['size'] = 10  # Enough for "True"/"False"
 
         # Default to string for unknown types
         else:
