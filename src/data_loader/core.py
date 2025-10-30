@@ -78,16 +78,52 @@ def normalize_header(raw: str) -> str:
     return s
 
 
-def infer_max_text_lengths(df: pd.DataFrame) -> Dict[str, int]:
-    """Infer maximum text length for string columns"""
-    max_lens = {}
+def infer_column_info(df: pd.DataFrame) -> Dict[str, Dict]:
+    """
+    Infer column types and sizes from DataFrame
+    Returns dict with 'type' and 'size' for each column
+    """
+    col_info = {}
     for col in df.columns:
-        if pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(
-            df[col]
-        ):
+        dtype = df[col].dtype
+        info = {}
+
+        # String/Object types
+        if pd.api.types.is_string_dtype(dtype) or pd.api.types.is_object_dtype(dtype):
             max_len = df[col].dropna().astype(str).map(len).max()
-            max_lens[col] = int(max_len) if pd.notna(max_len) and max_len > 0 else 1
-    return max_lens
+            info['type'] = 'STRING'
+            info['size'] = int(max_len) if pd.notna(max_len) and max_len > 0 else 1
+
+        # Integer types
+        elif pd.api.types.is_integer_dtype(dtype):
+            info['type'] = 'INTEGER'
+            info['size'] = None
+
+        # Float types
+        elif pd.api.types.is_float_dtype(dtype):
+            info['type'] = 'FLOAT'
+            info['size'] = None
+
+        # Datetime types
+        elif pd.api.types.is_datetime64_any_dtype(dtype):
+            info['type'] = 'DATETIME'
+            info['size'] = None
+
+        # Boolean types (treat as integer)
+        elif pd.api.types.is_bool_dtype(dtype):
+            info['type'] = 'INTEGER'
+            info['size'] = None
+
+        # Default to string for unknown types
+        else:
+            max_len = df[col].dropna().astype(str).map(len).max()
+            info['type'] = 'STRING'
+            info['size'] = int(max_len) if pd.notna(max_len) and max_len > 0 else 1
+            log.warning(f"Column '{col}' has unknown dtype {dtype}, treating as STRING")
+
+        col_info[col] = info
+
+    return col_info
 
 
 def coerce_pandas_dtypes(df: pd.DataFrame, dtypes_cfg: Dict) -> pd.DataFrame:
@@ -115,15 +151,18 @@ def coerce_pandas_dtypes(df: pd.DataFrame, dtypes_cfg: Dict) -> pd.DataFrame:
     return df
 
 
-def build_sqlalchemy_dtype_map(dtypes_cfg: Dict, max_text_lens: Dict[str, int]) -> Dict:
+def build_sqlalchemy_dtype_map(dtypes_cfg: Dict, col_info: Dict[str, Dict]) -> Dict:
     """Build SQLAlchemy dtype map for table creation"""
     dtype_map = {}
-    for col in max_text_lens:
+
+    # Process all columns from col_info
+    for col, info in col_info.items():
+        # Check if user specified an explicit type
         if col in dtypes_cfg:
             dt = dtypes_cfg[col].upper()
             sa_type_cls = SQLALCHEMY_TYPE_MAP.get(dt, String)
             if dt in ("TEXT", "STRING"):
-                size = max_text_lens[col]
+                size = info.get('size', 1)
                 if size <= MAX_FIXED_LENGTH:
                     dtype_map[col] = String(size)
                 else:
@@ -131,17 +170,26 @@ def build_sqlalchemy_dtype_map(dtypes_cfg: Dict, max_text_lens: Dict[str, int]) 
             else:
                 dtype_map[col] = sa_type_cls()
         else:
-            size = max_text_lens[col]
-            if size <= MAX_FIXED_LENGTH:
-                dtype_map[col] = String(size)
-            else:
-                dtype_map[col] = String()  # NVARCHAR(MAX)
+            # Use inferred type from DataFrame
+            inferred_type = info['type']
+            sa_type_cls = SQLALCHEMY_TYPE_MAP.get(inferred_type, String)
 
+            if inferred_type in ("TEXT", "STRING"):
+                size = info.get('size', 1)
+                if size <= MAX_FIXED_LENGTH:
+                    dtype_map[col] = String(size)
+                else:
+                    dtype_map[col] = String()  # NVARCHAR(MAX)
+            else:
+                dtype_map[col] = sa_type_cls()
+
+    # Handle any columns in dtypes_cfg that weren't in col_info
     for col, dtype in (dtypes_cfg or {}).items():
         if col not in dtype_map:
             dt = dtype.upper()
             sa_type_cls = SQLALCHEMY_TYPE_MAP.get(dt, String)
             dtype_map[col] = sa_type_cls()
+
     return dtype_map
 
 
@@ -165,27 +213,51 @@ def df_to_json_array(df: pd.DataFrame) -> str:
 
 
 def build_openjson_with_clause(
-    dtypes_cfg: Dict[str, str], df_columns: List[str], max_text_lens: Dict[str, int]
+    dtypes_cfg: Dict[str, str], df_columns: List[str], col_info: Dict[str, Dict]
 ) -> str:
     """Build the WITH clause for OPENJSON"""
     lines = []
     for col in df_columns:
+        # Check if user specified an explicit type
         if dtypes_cfg and col in dtypes_cfg:
             dtype = dtypes_cfg[col].upper()
             sql_type = OPENJSON_SQL_TYPE_MAP.get(dtype)
-            if not sql_type:
-                # Default to NVARCHAR with appropriate size
-                size = max_text_lens.get(col, 1)
-                if size <= MAX_FIXED_LENGTH:
-                    sql_type = f"NVARCHAR({size})"
+
+            # If we have a mapped type, use it
+            if sql_type:
+                # For string types with size specified, adjust if needed
+                if dtype in ("TEXT", "STRING") and col in col_info:
+                    size = col_info[col].get('size', 1)
+                    if size <= MAX_FIXED_LENGTH:
+                        sql_type = f"NVARCHAR({size})"
+                    else:
+                        sql_type = "NVARCHAR(MAX)"
+            else:
+                # Unknown type in config - default to NVARCHAR
+                if col in col_info:
+                    size = col_info[col].get('size', 1)
+                    if size <= MAX_FIXED_LENGTH:
+                        sql_type = f"NVARCHAR({size})"
+                    else:
+                        sql_type = "NVARCHAR(MAX)"
                 else:
                     sql_type = "NVARCHAR(MAX)"
         else:
-            # Use inferred max length for strings
-            size = max_text_lens.get(col, 1)
-            if size <= MAX_FIXED_LENGTH:
-                sql_type = f"NVARCHAR({size})"
+            # No explicit type - use inferred type from col_info
+            if col in col_info:
+                inferred_type = col_info[col]['type']
+                sql_type = OPENJSON_SQL_TYPE_MAP.get(inferred_type, "NVARCHAR(MAX)")
+
+                # For string types, use the inferred size
+                if inferred_type in ("TEXT", "STRING"):
+                    size = col_info[col].get('size', 1)
+                    if size <= MAX_FIXED_LENGTH:
+                        sql_type = f"NVARCHAR({size})"
+                    else:
+                        sql_type = "NVARCHAR(MAX)"
             else:
+                # Column not in col_info - default to NVARCHAR(MAX)
+                log.warning(f"Column '{col}' not found in col_info, using NVARCHAR(MAX)")
                 sql_type = "NVARCHAR(MAX)"
 
         # Escape column name and JSON path
@@ -209,7 +281,7 @@ def insert_json_batch_with_compression(
     table_name: str,
     df: pd.DataFrame,
     dtypes_cfg: Dict[str, str],
-    max_text_lens: Dict[str, int],
+    col_info: Dict[str, Dict],
     use_compression: bool = USE_COMPRESSION,
 ):
     """Insert batch using OPENJSON with optional GZIP compression (like Class1.cs)"""
@@ -236,7 +308,7 @@ DECLARE @json nvarchar(max) = N'{escaped_json}';
 """
 
     # Build WITH clause and column list
-    with_clause = build_openjson_with_clause(dtypes_cfg, list(df.columns), max_text_lens)
+    with_clause = build_openjson_with_clause(dtypes_cfg, list(df.columns), col_info)
     columns_list = ", ".join(f"[{col.replace(']', ']]')}]" for col in df.columns)
 
     # Complete the INSERT statement (like Class1.cs lines 379-384)
@@ -258,7 +330,7 @@ def adaptive_batch_insert_with_ewma(
     table_name: str,
     df: pd.DataFrame,
     dtypes_cfg: Dict[str, str],
-    max_text_lens: Dict[str, int],
+    col_info: Dict[str, Dict],
     starting_batch: str = "10000",
     min_batch: int = 5000,
     max_batch: int = 150000,
@@ -299,7 +371,7 @@ def adaptive_batch_insert_with_ewma(
         start_time = time.perf_counter()
         try:
             insert_json_batch_with_compression(
-                conn, table_name, batch_df, dtypes_cfg, max_text_lens, USE_COMPRESSION
+                conn, table_name, batch_df, dtypes_cfg, col_info, USE_COMPRESSION
             )
         except Exception as e:
             # Error-aware backoff (like Class1.cs lines 102-120)
@@ -516,10 +588,10 @@ def run_pipeline(
             else:
                 raise ValueError(f"Unsupported source_type: {src_type}")
 
-            # Coerce dtypes and infer max lengths
+            # Coerce dtypes and infer column info
             df = coerce_pandas_dtypes(df, dtypes_cfg)
-            max_text_lens = infer_max_text_lengths(df)
-            dtype_map = build_sqlalchemy_dtype_map(dtypes_cfg, max_text_lens)
+            col_info = infer_column_info(df)
+            dtype_map = build_sqlalchemy_dtype_map(dtypes_cfg, col_info)
 
             # Create table
             create_table_if_not_exists(conn, name, df, dtype_map)
@@ -564,14 +636,14 @@ def run_pipeline(
                 log.warning(f"[{name}] DataFrame has 0 rows after load. Skipping.")
                 continue
 
-            # Coerce dtypes and infer max lengths
+            # Coerce dtypes and infer column info
             df = coerce_pandas_dtypes(df, dtypes_cfg)
-            max_text_lens = infer_max_text_lengths(df)
+            col_info = infer_column_info(df)
 
             # Insert with adaptive batching
             log.info(f"[{name}] Starting adaptive batch insert of {len(df)} rows...")
             adaptive_batch_insert_with_ewma(
-                conn, name, df, dtypes_cfg, max_text_lens, starting_batch=default_batch
+                conn, name, df, dtypes_cfg, col_info, starting_batch=default_batch
             )
 
             log.info(f"[{name}] Completed insert.")
