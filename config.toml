@@ -49,7 +49,7 @@ if_exists = "fail"
 
 [[tables]]
 name = "wo_parts_delivered"
-source_path = "/Users/spencer.chunn/Library/CloudStorage/OneDrive-MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WO_Parts_Delivered 10.13.25 - 1.7 mil rows.csv"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WO_Parts_Delivered 10.13.25 - 1.7 mil rows.csv"
 source_type = "csv"
 delimiter = ","
 column_mappings = {"Description" = "description", "Part Number" = "part_number", "Part Line Number" = "part_line_number", "Qty from Inventory" = "qty_from_inventory", "Qty on Order" = "qty_on_order", "Total Quantity" = "total_quantity", "Total Qty Received" = "total_qty_received", "Qty on Request" = "qty_on_request", "Qty Requested" = "qty_requested", "Qty Reserved" = "qty_reserved", "Sell Price" = "sell_price", "FACILITYCODE" = "facilitycode", "Unit Cost" = "unit_cost", "Date Delivered" = "date_delivered", "Landed Cost" = "landed_cost", "Lot Number" = "lot_number", "PO Number" = "po_number", "Qty Received" = "qty_received", "Quantity" = "quantity", "Serial Number" = "serial_number", "Condition" = "condition", "SQUAWKKEY" = "squawkkey", "Work Order" = "work_order", "AC Registration" = "ac_registration", "AC Serial" = "ac_serial", "AC Manufacturer" = "ac_manufacturer", "AC Model" = "ac_model", "Department" = "department", "Default Customer" = "default_customer"}
@@ -58,7 +58,7 @@ if_exists = "fail"
 
 [[tables]]
 name = "wo_services"
-source_path = "/Users/spencer.chunn/Library/CloudStorage/OneDrive-MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WO_Services 10.13.25.csv"
+source_path = "/Users/katherine.elmlinger/MMC/WSAV-0008-2025-Inventory Diagnostic & Insourcing - Documents/02 Client Input Materials/Original Client Data - do not edit/WO_Services 10.13.25.csv"
 source_type = "csv"
 delimiter = ","
 column_mappings = {"Description" = "description", "Part Number" = "part_number", "Part Description" = "part_description", "Qty at Vendor" = "qty_at_vendor", "Qty Delivered" = "qty_delivered", "Qty on Order" = "qty_on_order", "Qty on Request" = "qty_on_request", "Qty Received" = "qty_received", "Total Quantity" = "total_quantity", "Unit Sell Price" = "unit_sell_price", "Service Line Number" = "service_line_number", "Unit Cost" = "unit_cost", "Landed Cost" = "landed_cost", "PO Line Number" = "po_line_number", "Detail Quantity" = "detail_quantity", "Serial Number" = "serial_number", "FACILITYCODE" = "facilitycode", "Extended Sell Price" = "extended_sell_price", "Extended Cost" = "extended_cost", "SQUAWKKEY" = "squawkkey", "Date Completed" = "date_completed", "Service PO Date Completed" = "service_po_date_completed", "Vendor" = "vendor", "Work Order" = "work_order", "AC Registration" = "ac_registration", "AC Serial" = "ac_serial", "AC Manufacturer" = "ac_manufacturer", "AC Model" = "ac_model", "Department" = "department", "Default Customer" = "default_customer"}
