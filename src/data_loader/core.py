@@ -11,7 +11,7 @@ import toml
 import pandas as pd
 import polars as pl
 from tqdm import tqdm
-from sqlalchemy import create_engine, MetaData, Table, Column, text
+from sqlalchemy import create_engine, MetaData, Table, Column, text, inspect
 from sqlalchemy.types import Integer, Float, String, Date, DateTime, Numeric
 from sqlalchemy.engine import Connection
 
@@ -194,10 +194,49 @@ def build_sqlalchemy_dtype_map(dtypes_cfg: Dict, col_info: Dict[str, Dict]) -> D
     return dtype_map
 
 
-def create_table_if_not_exists(
-    conn: Connection, table_name: str, df: pd.DataFrame, dtype_map: Dict
-):
-    """Create table if it doesn't exist"""
+def table_exists(conn: Connection, table_name: str) -> bool:
+    """Check if table exists in database"""
+    inspector = inspect(conn)
+    return table_name in inspector.get_table_names()
+
+
+def handle_table_creation(
+    conn: Connection,
+    table_name: str,
+    df: pd.DataFrame,
+    dtype_map: Dict,
+    if_exists: str = "append"
+) -> bool:
+    """
+    Handle table creation based on if_exists strategy.
+
+    Args:
+        conn: Database connection
+        table_name: Name of the table
+        df: DataFrame with data
+        dtype_map: Column type mappings
+        if_exists: Strategy - 'skip', 'replace', or 'append'
+
+    Returns:
+        True if table should be processed, False if skipped
+    """
+    exists = table_exists(conn, table_name)
+
+    if exists:
+        if if_exists == "skip":
+            log.debug(f"Table '{table_name}' exists, skipping (if_exists=skip)")
+            return False
+        elif if_exists == "replace":
+            log.debug(f"Table '{table_name}' exists, dropping (if_exists=replace)")
+            conn.execute(text(f"DROP TABLE {table_name}"))
+            conn.commit()
+        elif if_exists == "append":
+            log.debug(f"Table '{table_name}' exists, will append (if_exists=append)")
+            return True
+        else:
+            raise ValueError(f"Invalid if_exists value: '{if_exists}'. Must be 'skip', 'replace', or 'append'")
+
+    # Create table
     metadata = MetaData()
     columns = []
     for col in df.columns:
@@ -205,7 +244,9 @@ def create_table_if_not_exists(
         columns.append(Column(col, col_type, nullable=True))
     table = Table(table_name, metadata, *columns)
     metadata.create_all(bind=conn)
-    log.debug(f"Ensured table '{table_name}' exists.")
+    log.debug(f"Created table '{table_name}'")
+
+    return True
 
 
 def df_to_json_array(df: pd.DataFrame) -> str:
@@ -659,6 +700,8 @@ def run_pipeline(
     print("PHASE 1: Creating tables")
     print("=" * 60)
 
+    tables_to_process = []  # Track which tables to actually insert data into
+
     with engine.connect() as conn:
         for tbl in tables:
             name = tbl["name"]
@@ -666,6 +709,7 @@ def run_pipeline(
             src_type = tbl["source_type"].lower()
             mappings = tbl.get("column_mappings", {}) or {}
             dtypes_cfg = tbl.get("dtypes", {}) or {}
+            if_exists = tbl.get("if_exists", "append").lower()
 
             print(f"  ▸ {name}: Loading data for schema inference...")
 
@@ -693,26 +737,35 @@ def run_pipeline(
             col_info = infer_column_info(df)
             dtype_map = build_sqlalchemy_dtype_map(dtypes_cfg, col_info)
 
-            # Create table
-            create_table_if_not_exists(conn, name, df, dtype_map)
-            print(f"    ✓ Created table '{name}' ({len(df):,} rows, {len(df.columns)} columns)")
+            # Handle table creation based on if_exists strategy
+            should_process = handle_table_creation(conn, name, df, dtype_map, if_exists)
+
+            if should_process:
+                tables_to_process.append(tbl)
+                print(f"    ✓ Table '{name}' ready ({len(df):,} rows, {len(df.columns)} columns)")
+            else:
+                print(f"    ⊘ Skipped '{name}' (table exists, if_exists=skip)")
 
         conn.commit()
 
     # Second pass: insert data with adaptive batching
+    if not tables_to_process:
+        print("\n⊘ No tables to process (all skipped)")
+        return
+
     print("\n" + "=" * 60)
     print("PHASE 2: Inserting data with adaptive batching")
     print("=" * 60 + "\n")
 
     with engine.connect() as conn:
-        for idx, tbl in enumerate(tables, 1):
+        for idx, tbl in enumerate(tables_to_process, 1):
             name = tbl["name"]
             src_path = tbl["source_path"]
             src_type = tbl["source_type"].lower()
             mappings = tbl.get("column_mappings", {}) or {}
             dtypes_cfg = tbl.get("dtypes", {}) or {}
 
-            print(f"Table {idx}/{len(tables)}: {name}")
+            print(f"Table {idx}/{len(tables_to_process)}: {name}")
 
             # Load data again (to avoid keeping in memory)
             if src_type == "csv":

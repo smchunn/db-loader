@@ -20,7 +20,7 @@ null_values = ["", "NULL"]   # (optional)
 column_mappings = { "CustomerID" = "customer_id", "Name" = "name", "SignupDate" = "signup_date", "Spend" = "spend" }
 # Optional type coercions (applied before load)
 dtypes = { "customer_id" = "INT", "name" = "TEXT", "signup_date" = "DATE", "spend" = "FLOAT" }
-if_exists = "append"         # append | replace | fail
+if_exists = "append"         # append | replace | skip
 pre_sql = ""                 # optional SQL to run before load
 post_sql = ""                # optional SQL to run after load
 

@@ -104,6 +104,7 @@ mssql+pyodbc://[user[:password]@]host/database[?driver=...&option=...]
 | `sheet` | string | Excel sheet name (for Excel files) |
 | `column_mappings` | dict | Rename columns: `{"old_name" = "new_name"}` |
 | `dtypes` | dict | Explicit types: `{"col" = "INTEGER/FLOAT/DATETIME/STRING"}` |
+| `if_exists` | string | How to handle existing table: "append" (default), "replace", or "skip" |
 
 ### CLI Options
 
@@ -113,6 +114,23 @@ mssql+pyodbc://[user[:password]@]host/database[?driver=...&option=...]
 | `--tables NAME [NAME ...]` | Process only specified tables |
 | `--starting-batch SIZE` | Starting batch size (prefix with = for fixed) |
 | `--log-level LEVEL` | Override log level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+
+### Table Handling with `if_exists`
+
+The `if_exists` option controls what happens when a table already exists:
+
+- **`append`** (default) - Add data to the existing table without modifying it
+- **`replace`** - Drop the existing table and recreate it with new schema
+- **`skip`** - Skip this table entirely if it already exists (useful for incremental loads)
+
+Example:
+```toml
+[[tables]]
+name = "customers"
+source_path = "customers.csv"
+source_type = "csv"
+if_exists = "skip"  # Don't reload if table already exists
+```
 
 ## How It Works
 
