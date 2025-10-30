@@ -477,7 +477,7 @@ def adaptive_batch_insert_with_ewma(
                 log.debug(f"Detected size-related error, reducing batch to {batch}")
 
             if old_batch != batch:
-                pbar.write(f"↓ Reducing batch size: {old_batch} → {batch}")
+                print(f"\r↓ Batch size: {old_batch:,} → {batch:,} (retry after error)".ljust(80), end='', flush=True)
             else:
                 log.debug(f"Retrying with same batch size ({batch})")
 
@@ -517,13 +517,13 @@ def adaptive_batch_insert_with_ewma(
                 # Fast → increase (Class1.cs lines 130-135)
                 new_batch = min(int(batch * inc_factor), max_batch)
                 if new_batch != batch:
-                    pbar.write(f"↑ Increasing batch size: {batch:,} → {new_batch:,} (fast: {elapsed:.2f}s)")
+                    print(f"\r↑ Batch size: {batch:,} → {new_batch:,} (fast: {elapsed:.2f}s)".ljust(80), end='', flush=True)
                     batch = new_batch
             elif elapsed > slow_threshold:
                 # Slow → decrease (Class1.cs lines 136-141)
                 new_batch = max(int(batch * dec_factor), min_batch)
                 if new_batch != batch:
-                    pbar.write(f"↓ Decreasing batch size: {batch:,} → {new_batch:,} (slow: {elapsed:.2f}s)")
+                    print(f"\r↓ Batch size: {batch:,} → {new_batch:,} (slow: {elapsed:.2f}s)".ljust(80), end='', flush=True)
                     batch = new_batch
             else:
                 # Within target band: small additive increase (Class1.cs lines 144-149)
@@ -535,6 +535,7 @@ def adaptive_batch_insert_with_ewma(
 
     # Close progress bar
     pbar.close()
+    print()  # Clear any status line from batch size changes
 
 
 def load_csv_with_polars(
