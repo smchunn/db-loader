@@ -515,18 +515,18 @@ def adaptive_batch_insert_with_ewma(
                     batch = new_batch
 
 
-def load_csv_with_polars_lazy(
+def load_csv_with_polars(
     src_path: str,
     delimiter: str = ",",
     null_values: Optional[List[str]] = None,
     column_mappings: Optional[Dict[str, str]] = None,
     table_name: str = "table",
 ) -> pd.DataFrame:
-    """Load CSV using Polars for efficiency, return as Pandas DataFrame"""
+    """Load CSV using Polars (eager), return as Pandas DataFrame"""
     log.info(f"[{table_name}] Loading CSV: {src_path}")
 
-    # Use Polars lazy API for efficient loading
-    df = pl.scan_csv(
+    # Use Polars eager API - we need all data anyway for type inference
+    df = pl.read_csv(
         src_path,
         separator=delimiter,
         null_values=null_values,
@@ -541,8 +541,8 @@ def load_csv_with_polars_lazy(
         if rename_dict:
             df = df.rename(rename_dict)
 
-    # Collect to Pandas
-    pandas_df = df.collect().to_pandas()
+    # Convert to Pandas
+    pandas_df = df.to_pandas()
 
     # Normalize column names
     pandas_df.columns = [normalize_header(col) for col in pandas_df.columns]
@@ -646,7 +646,7 @@ def run_pipeline(
 
             # Load data
             if src_type == "csv":
-                df = load_csv_with_polars_lazy(
+                df = load_csv_with_polars(
                     src_path,
                     delimiter=tbl.get("delimiter", ","),
                     null_values=tbl.get("null_values", None),
@@ -690,7 +690,7 @@ def run_pipeline(
 
             # Load data again (to avoid keeping in memory)
             if src_type == "csv":
-                df = load_csv_with_polars_lazy(
+                df = load_csv_with_polars(
                     src_path,
                     delimiter=tbl.get("delimiter", ","),
                     null_values=tbl.get("null_values", None),
